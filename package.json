@@ -1,0 +1,38 @@
+{
+  "name": "shell-complete",
+  "version": "0.1.0",
+  "description": "Dynamic shell completion engine for CLIs — Cobra-style __complete protocol for bash, zsh, and fish",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "stubs.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test.js",
+    "test:completion": "node test-completion.js",
+    "test:all": "node test.js && node test-completion.js"
+  },
+  "keywords": [
+    "shell",
+    "completion",
+    "autocomplete",
+    "tab-completion",
+    "bash",
+    "zsh",
+    "fish",
+    "cli",
+    "cobra"
+  ],
+  "license": "MIT",
+  "author": "tony@lownds.com",
+  "engines": {
+    "node": ">= 12"
+  },
+  "devDependencies": {
+    "node-pty": "^1.0.0"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true
+  }
+}
