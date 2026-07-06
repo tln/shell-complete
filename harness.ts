@@ -1,39 +1,49 @@
-'use strict';
-
 // Real completion test harness: drive an actual interactive shell through a
 // pseudo-terminal, type a command line, press TAB, and capture what the shell
 // renders. This exercises the true path — `complete`/`compdef` registration,
 // the shell's own filtering, directive effects, and rendering — not just our
 // completion function in isolation.
 //
-//   const { getCompletions, shellAvailable } = require('./harness');
+//   import { getCompletions, shellAvailable } from './harness';
 //   await getCompletions('bash', 'demo push --');  // -> { candidates, raw }
 
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const cp = require('child_process');
-const pty = require('node-pty');
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as cp from 'child_process';
+import * as pty from 'node-pty';
+import * as ac from './index';
+import { Shell } from './index';
 
 const DEMO = path.join(__dirname, 'examples', 'demo.js');
 const MARKER = '@@RDY@@'; // unique prompt marker delimiting shell states
 const NODE = process.execPath;
 
+export interface Completions {
+  candidates: string[];
+  raw: string;
+}
+
+export interface CompletionOpts {
+  timeout?: number;
+  files?: string[];
+}
+
 // node-pty ships a prebuilt `spawn-helper` that must be executable; some
 // sandboxed installs skip the postinstall chmod. Fix it best-effort on load.
-(function ensureHelperExecutable() {
-  const base = path.join(__dirname, 'node_modules', 'node-pty', 'prebuilds');
-  let dirs = [];
+(function ensureHelperExecutable(): void {
+  const base = path.join(__dirname, '..', 'node_modules', 'node-pty', 'prebuilds');
+  let dirs: string[] = [];
   try {
     dirs = fs.readdirSync(base);
-  } catch (e) {
+  } catch {
     return;
   }
   for (const d of dirs) {
     const helper = path.join(base, d, 'spawn-helper');
     try {
       fs.chmodSync(helper, 0o755);
-    } catch (e) {
+    } catch {
       /* not present for this platform */
     }
   }
@@ -41,7 +51,7 @@ const NODE = process.execPath;
 
 // Remove ANSI escapes, carriage returns, backspaces, and bells so the captured
 // terminal output is plain text we can parse.
-function clean(s) {
+export function clean(s: string): string {
   return s
     .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '') // OSC sequences
     .replace(/\x1b[\[\]][0-9;?]*[ -/]*[@-~]/g, '') // CSI sequences
@@ -52,29 +62,30 @@ function clean(s) {
 }
 
 // Which shells are installed on this machine.
-function shellAvailable(shell) {
-  try {
-    cp.execFileSync('command', ['-v', shell]); // won't work; fall through
-  } catch (e) {
-    /* ignore */
-  }
+export function shellAvailable(shell: string): boolean {
   const bins = (process.env.PATH || '').split(path.delimiter);
   return bins.some((b) => {
     try {
       fs.accessSync(path.join(b, shell), fs.constants.X_OK);
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   });
 }
 
+interface Setup {
+  file: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
 // Build the per-shell spawn config: an isolated init that shims `demo` to the
 // node script, sources our generated stub, sets a marker prompt, and turns on
 // immediate ambiguous listing so a single TAB shows all candidates.
-function shellSetup(shell, tmpdir) {
-  const ac = require('./index');
-  const stub = ac.script('demo', shell);
+function shellSetup(shell: Shell, tmpdir: string): Setup {
+  // Generate at the low level; the token must match the demo's routing.
+  const stub = ac.stubs.script('demo', shell, '__complete');
   const demoShim =
     shell === 'fish'
       ? `function demo; ${NODE} ${DEMO} $argv; end`
@@ -117,11 +128,7 @@ function shellSetup(shell, tmpdir) {
         '',
       ].join('\n')
     );
-    return {
-      file: 'zsh',
-      args: ['-i'],
-      env: { ZDOTDIR: zdot },
-    };
+    return { file: 'zsh', args: ['-i'], env: { ZDOTDIR: zdot } };
   }
 
   if (shell === 'fish') {
@@ -137,22 +144,18 @@ function shellSetup(shell, tmpdir) {
         '',
       ].join('\n')
     );
-    return {
-      file: 'fish',
-      args: ['-N', '-i', '-C', `source ${setup}`],
-      env: {},
-    };
+    return { file: 'fish', args: ['-N', '-i', '-C', `source ${setup}`], env: {} };
   }
 
   throw new Error('unsupported shell: ' + shell);
 }
 
 // Parse the captured listing region into candidate values, per shell.
-function parseCandidates(shell, region) {
+function parseCandidates(shell: Shell, region: string): string[] {
   const lines = clean(region).split('\n');
   // Drop the first line (the echoed command) and blank lines.
   const listing = lines.slice(1).filter((l) => l.trim() !== '' && l.indexOf(MARKER) === -1);
-  const out = [];
+  const out: string[] = [];
 
   for (const line of listing) {
     let text = line;
@@ -162,9 +165,11 @@ function parseCandidates(shell, region) {
       if (i !== -1) text = text.slice(0, i);
       for (const tok of text.trim().split(/\s+/)) if (tok) out.push(tok);
     } else if (shell === 'fish') {
-      // "value  (description)" one per line -> first field
-      const tok = text.trim().split(/\s{2,}|\t/)[0].trim();
-      if (tok) out.push(tok);
+      // pager rows: "value  (description)  value  (description)" — values and
+      // parenthesized descriptions separated by 2+ spaces
+      for (const tok of text.trim().split(/\s{2,}|\t/)) {
+        if (tok && !/^\(.*\)$/.test(tok)) out.push(tok);
+      }
     } else {
       // bash: no descriptions, candidates space/column separated
       for (const tok of text.trim().split(/\s+/)) if (tok) out.push(tok);
@@ -174,8 +179,11 @@ function parseCandidates(shell, region) {
 }
 
 // Drive one completion. Returns { candidates, raw }.
-function getCompletions(shell, line, opts) {
-  opts = opts || {};
+export function getCompletions(
+  shell: Shell,
+  line: string,
+  opts: CompletionOpts = {}
+): Promise<Completions> {
   const timeout = opts.timeout || 10000;
   const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-complete-'));
   // Optionally seed files in the cwd so file-completion fallback is observable.
@@ -193,55 +201,94 @@ function getCompletions(shell, line, opts) {
   });
 
   let buf = '';
-  const markerCount = () => buf.split(MARKER).length - 1;
+  const markerCount = (): number => buf.split(MARKER).length - 1;
 
-  return new Promise((resolve, reject) => {
+  // fish 4 probes the terminal (kitty keyboard protocol, XTGETTCAP,
+  // background color, cursor position, primary DA) and waits for the answers
+  // before drawing/redrawing. Answer every query, every time.
+  const answerTerminalQueries = (data: string): void => {
+    const reply = (trigger: RegExp, response: string): void => {
+      const m = data.match(trigger);
+      for (let i = 0; i < (m ? m.length : 0); i++) term.write(response);
+    };
+    reply(/\x1b\[\?u/g, '\x1b[?0u');
+    reply(/\x1b\]11;\?/g, '\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\');
+    reply(/\x1bP\+q[0-9a-fA-F;]*(\x1b\\|\x07)/g, '\x1bP0+r\x1b\\');
+    reply(/\x1b\[6n/g, '\x1b[1;1R');
+    reply(/\x1b\[0?c/g, '\x1b[?62c');
+  };
+
+  return new Promise<Completions>((resolve, reject) => {
     let done = false;
-    const finish = (fn, arg) => {
+    const finish = <T>(fn: (arg: T) => void, arg: T): void => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       try {
         term.kill();
-      } catch (e) {
+      } catch {
         /* already gone */
       }
       try {
         fs.rmSync(tmpdir, { recursive: true, force: true });
-      } catch (e) {
+      } catch {
         /* ignore */
       }
       fn(arg);
     };
 
     const timer = setTimeout(
-      () => finish(reject, new Error(`timed out waiting for completion (${shell})\n--- raw ---\n` + buf)),
+      () =>
+        finish(
+          reject,
+          new Error(`timed out waiting for completion (${shell})\n--- raw ---\n` + buf)
+        ),
       timeout
     );
 
     let phase = 'boot'; // boot -> typed -> listed
     let regionStart = 0;
+    let tabbed = false;
+    let quiesce: ReturnType<typeof setTimeout> | undefined;
 
-    term.onData((data) => {
+    const finishListed = (region: string): void => {
+      phase = 'listed';
+      const candidates = parseCandidates(shell, region);
+      if (process.env.DEBUG_PTY) {
+        process.stderr.write(`\n=== ${shell} raw region ===\n${JSON.stringify(region)}\n`);
+      }
+      finish(resolve, { candidates, raw: region });
+    };
+
+    term.onData((data: string) => {
       buf += data;
+      answerTerminalQueries(data);
 
       if (phase === 'boot' && markerCount() >= 1) {
         phase = 'typed';
         regionStart = buf.length; // region begins after the first prompt
         term.write(line);
         // Small delay so the echo lands before TAB, then request completion.
-        setTimeout(() => term.write('\t'), 60);
+        setTimeout(() => {
+          tabbed = true;
+          term.write('\t');
+        }, 60);
         return;
       }
 
-      if (phase === 'typed' && markerCount() >= 2) {
-        phase = 'listed';
-        const region = buf.slice(regionStart, buf.lastIndexOf(MARKER));
-        const candidates = parseCandidates(shell, region);
-        if (process.env.DEBUG_PTY) {
-          process.stderr.write(`\n=== ${shell} raw region ===\n${JSON.stringify(region)}\n`);
-        }
-        finish(resolve, { candidates, raw: region });
+      if (phase !== 'typed') return;
+
+      // bash/zsh redraw the marker prompt above/below the listing.
+      if (markerCount() >= 2) {
+        finishListed(buf.slice(regionStart, buf.lastIndexOf(MARKER)));
+        return;
+      }
+
+      // fish repaints the pager in place without re-printing the prompt:
+      // treat post-TAB output quiescence as "listing rendered".
+      if (shell === 'fish' && tabbed) {
+        if (quiesce) clearTimeout(quiesce);
+        quiesce = setTimeout(() => finishListed(buf.slice(regionStart)), 350);
       }
     });
 
@@ -251,4 +298,4 @@ function getCompletions(shell, line, opts) {
   });
 }
 
-module.exports = { getCompletions, shellAvailable, clean, MARKER };
+export { MARKER };

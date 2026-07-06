@@ -2,16 +2,23 @@
   "name": "shell-complete",
   "version": "0.1.0",
   "description": "Dynamic shell completion engine for CLIs — Cobra-style __complete protocol for bash, zsh, and fish",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
-    "index.js",
-    "stubs.js",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map",
+    "dist/stubs.js",
+    "dist/stubs.d.ts",
+    "dist/stubs.d.ts.map",
     "README.md"
   ],
   "scripts": {
-    "test": "node test.js",
-    "test:completion": "node test-completion.js",
-    "test:all": "node test.js && node test-completion.js"
+    "build": "tsc",
+    "prepare": "tsc",
+    "test": "tsc && node dist/test.js",
+    "test:completion": "tsc && node dist/test-completion.js",
+    "test:all": "tsc && node dist/test.js && node dist/test-completion.js"
   },
   "keywords": [
     "shell",
@@ -30,7 +37,9 @@
     "node": ">= 12"
   },
   "devDependencies": {
-    "node-pty": "^1.0.0"
+    "@types/node": "^26.1.0",
+    "node-pty": "^1.0.0",
+    "typescript": "^6.0.3"
   },
   "allowScripts": {
     "node-pty@1.1.0": true
