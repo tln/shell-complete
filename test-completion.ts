@@ -31,7 +31,7 @@ for (const shell of SHELLS) {
 
   test(`${shell}: completes flags of a subcommand`, async () => {
     const { candidates } = await getCompletions(shell, 'demo push --');
-    assert.deepStrictEqual(sorted(candidates), ['--force', '--tags']);
+    assert.deepStrictEqual(sorted(candidates), ['--force', '--remote=', '--tags']);
   });
 }
 
@@ -81,6 +81,22 @@ for (const shell of SHELLS) {
     });
     assert.ok(
       candidates.indexOf('ZZcompletionmarker') !== -1,
+      'expected the seeded file to be offered; got ' + JSON.stringify(candidates)
+    );
+  });
+}
+
+// --- DEFAULT on a `--flag=` word: files complete after the `=`, not against
+// the whole word (bash splits on wordbreaks; fish handles `=` natively; zsh
+// needs the stub's compset). `demo xyz …` is an unknown subcommand, so the
+// demo replies bare DEFAULT.
+for (const shell of SHELLS) {
+  test(`${shell}: Default completes the value after --flag=`, async () => {
+    const { candidates } = await getCompletions(shell, 'demo xyz --expire=', {
+      files: ['ZZcompletionmarker'],
+    });
+    assert.ok(
+      candidates.some((c) => c.indexOf('ZZcompletionmarker') !== -1),
       'expected the seeded file to be offered; got ' + JSON.stringify(candidates)
     );
   });

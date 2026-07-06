@@ -3,11 +3,11 @@
 //
 //   <prog> <request> <shell>/<PROTOCOL> <word...> <toComplete>
 //
-// and renders the reply natively. The reply is line-oriented:
+// and renders the reply natively. The reply is line-oriented, read to end of
+// output:
 //
 //   <TYPE>[ <flag>...]        DEFAULT | NODEFAULT | EXT | DIRS; flag: NOSPACE
 //   <payload line>*           candidates (value\tdesc) / extensions / a dir
-//   EOF                       terminator; if absent the reply is discarded
 //
 // Semantics per type:
 //   DEFAULT     offer the payload candidates; fall back to file completion
@@ -65,13 +65,8 @@ ${fn}() {
     COMPREPLY=()
     compopt -o nosort 2>/dev/null                     # keep program order (bash >= 4.4)
 
-    # a complete reply ends with the EOF guard; otherwise show nothing
-    local n=\${#lines[@]}
-    if ((n < 2)) || [[ \${lines[n-1]} != EOF ]]; then
-        return
-    fi
     local head=\${lines[0]}
-    local -a payload=("\${lines[@]:1:n-2}")
+    local -a payload=("\${lines[@]:1}")
 
     case \${head%% *} in
     DEFAULT|NODEFAULT)
@@ -91,30 +86,56 @@ ${fn}() {
                 done
             fi
         done
-        if [[ \${head%% *} == DEFAULT ]]; then         # files as fallback
-            compopt -o default 2>/dev/null
+        # registered with -o nospace (static: works on bash 3.2), so every
+        # space-wanting candidate carries its own trailing space; a NOSPACE
+        # reply arrives pre-padded where needed
+        if [[ $head != *NOSPACE* ]]; then
+            for ((i = 0; i < \${#COMPREPLY[@]}; i++)); do
+                COMPREPLY[i]+=' '
+            done
         fi
-        if [[ $head == *NOSPACE* ]]; then
-            compopt -o nospace 2>/dev/null
+        if [[ \${head%% *} == DEFAULT ]] && ((\${#COMPREPLY[@]} == 0)); then
+            # files as fallback. Without compopt (bash 3.2, macOS /bin/bash)
+            # emulate readline: complete the part after the last wordbreak it
+            # split on, marking dirs with / and files with the space that the
+            # static nospace withholds
+            if ! compopt +o nospace -o default 2>/dev/null; then
+                local w=$cur
+                for char in = :; do
+                    [[ $w == *$char* && $COMP_WORDBREAKS == *$char* ]] && w=\${w##*$char}
+                done
+                while IFS= read -r line; do
+                    if [[ -d $line ]]; then COMPREPLY+=("$line/"); else COMPREPLY+=("$line "); fi
+                done < <(compgen -f -- "$w")
+            fi
         fi
         ;;
     EXT)
-        local ext
+        local ext i
         for ext in "\${payload[@]}"; do
             while IFS= read -r line; do COMPREPLY+=("$line"); done \\
                 < <(compgen -f -X "!*.$ext" -- "$cur")
         done
         while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -d -- "$cur")
-        compopt -o filenames 2>/dev/null
+        if ! compopt +o nospace -o filenames 2>/dev/null; then
+            for ((i = 0; i < \${#COMPREPLY[@]}; i++)); do
+                if [[ -d \${COMPREPLY[i]} ]]; then COMPREPLY[i]+=/; else COMPREPLY[i]+=' '; fi
+            done
+        fi
         ;;
     DIRS)
+        local i
         while IFS= read -r line; do COMPREPLY+=("$line"); done \\
             < <(cd "\${payload[0]:-.}" 2>/dev/null && compgen -d -- "$cur")
-        compopt -o filenames 2>/dev/null
+        if ! compopt +o nospace -o filenames 2>/dev/null; then
+            for ((i = 0; i < \${#COMPREPLY[@]}; i++)); do
+                COMPREPLY[i]+=/
+            done
+        fi
         ;;
     esac
 }
-complete -F ${fn} ${name}
+complete -o nospace -F ${fn} ${name}
 `;
 }
 
@@ -127,33 +148,43 @@ ${fn}() {
     req=("\${(@)words[2,CURRENT]}")
     lines=("\${(@f)$(${name} ${request} zsh/${PROTOCOL} "\${(@)req}" 2>/dev/null)}")
 
-    # a complete reply ends with the EOF guard; otherwise show nothing
-    (( \${#lines} >= 2 )) && [[ \${lines[-1]} == EOF ]] || return
     local head=\${lines[1]}
     local -a payload
-    payload=("\${(@)lines[2,-2]}")
+    payload=("\${(@)lines[2,-1]}")
 
     case \${head%% *} in
     DEFAULT|NODEFAULT)
-        local -a cands
-        local line val desc
+        # Two batches: cands get zsh's own trailing space; nscands (the
+        # noSpace candidates of a NOSPACE reply) complete with -S ''. Space-
+        # wanting candidates in a NOSPACE reply arrive padded — strip the pad
+        # and let zsh append the real space (inserting the literal padded
+        # space would render it escaped, as "--force\\ ").
+        local -a cands nscands
+        local line val desc ns entry
         for line in $payload; do
             val=\${line%%$'\\t'*}
             desc=\${line#*$'\\t'}
+            ns=0
+            if [[ $head == *NOSPACE* ]]; then
+                if [[ $val == *' ' ]]; then val=\${val%' '}; else ns=1; fi
+            fi
             val=\${val//:/\\\\:}                       # _describe separator
             if [[ $val == $desc || $line != *$'\\t'* ]]; then
-                cands+=("$val")
+                entry=$val
             else
-                cands+=("$val:$desc")
+                entry="$val:$desc"
             fi
+            if (( ns )); then nscands+=("$entry"); else cands+=("$entry"); fi
         done
-        local -a copts
-        [[ $head == *NOSPACE* ]] && copts+=(-S '')
         local ret=1
         if (( \${#cands} )); then
-            _describe -V -t ${ident(name)} '${name}' cands $copts && ret=0
+            _describe -V -t ${ident(name)} '${name}' cands && ret=0
+        fi
+        if (( \${#nscands} )); then
+            _describe -V -t ${ident(name)} '${name}' nscands -S '' && ret=0
         fi
         if (( ret )) && [[ \${head%% *} == DEFAULT ]]; then
+            compset -P '*[=:]'                        # bash-wordbreak parity: complete the value after --flag= / host:
             _files                                    # fallback when nothing matched
         fi
         ;;
@@ -174,6 +205,9 @@ ${fn}() {
         ;;
     esac
 }
+if (( ! $+functions[compdef] )); then   # compsys not booted (no compinit in rc)
+    autoload -Uz compinit && compinit -i  # -i: skip insecure dirs, never prompt
+fi
 compdef ${fn} ${name}
 `;
 }
@@ -191,14 +225,8 @@ function ${fn}
     set -l current (commandline -ct)   # the word under the cursor
     set -l lines (${name} ${request} fish/${PROTOCOL} $tokens[2..-1] $current 2>/dev/null)
 
-    # a complete reply ends with the EOF guard; otherwise show nothing
-    test (count $lines) -ge 2; or return 0
-    test "$lines[-1]" = EOF; or return 0
-
-    set -l payload
-    if test (count $lines) -gt 2
-        set payload $lines[2..-2]
-    end
+    test (count $lines) -ge 1; or return 0    # no output: show nothing
+    set -l payload $lines[2..-1]
 
     set -l type (string split -m1 ' ' -- $lines[1])[1]
     switch $type

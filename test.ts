@@ -35,25 +35,37 @@ function test(name: string, fn: () => void | Promise<void>): void {
 test('serialize lowers each Reply shape to the wire format', () => {
   const s = ac.serialize;
   // no opinion -> shell default (files)
-  assert.strictEqual(s(undefined), 'DEFAULT\nEOF\n');
-  assert.strictEqual(s(null), 'DEFAULT\nEOF\n');
+  assert.strictEqual(s(undefined), 'DEFAULT\n');
+  assert.strictEqual(s(null), 'DEFAULT\n');
   // candidates, nothing else
-  assert.strictEqual(s(['a', 'b']), 'NODEFAULT\na\nb\nEOF\n');
-  assert.strictEqual(s([]), 'NODEFAULT\nEOF\n'); // no matches — show nothing
-  assert.strictEqual(s({ items: ['a'] }), 'NODEFAULT\na\nEOF\n');
+  assert.strictEqual(s(['a', 'b']), 'NODEFAULT\na\nb\n');
+  assert.strictEqual(s([]), 'NODEFAULT\n'); // no matches — show nothing
+  assert.strictEqual(s({ items: ['a'] }), 'NODEFAULT\na\n');
   // descriptions ride behind a tab
   assert.strictEqual(
     s([{ value: 'push', description: 'Update remote refs' }, 'add']),
-    'NODEFAULT\npush\tUpdate remote refs\nadd\nEOF\n'
+    'NODEFAULT\npush\tUpdate remote refs\nadd\n'
   );
   // name-or-path: candidates plus file fallback
-  assert.strictEqual(s({ items: ['a'], default: true }), 'DEFAULT\na\nEOF\n');
+  assert.strictEqual(s({ items: ['a'], default: true }), 'DEFAULT\na\n');
   // delegated, filtered file completion (payload = filter args)
-  assert.strictEqual(s({ ext: ['md', 'docx'] }), 'EXT\nmd\ndocx\nEOF\n');
-  assert.strictEqual(s({ dirs: true }), 'DIRS\nEOF\n');
-  assert.strictEqual(s({ dirs: true, in: 'themes' }), 'DIRS\nthemes\nEOF\n');
+  assert.strictEqual(s({ ext: ['md', 'docx'] }), 'EXT\nmd\ndocx\n');
+  assert.strictEqual(s({ dirs: true }), 'DIRS\n');
+  assert.strictEqual(s({ dirs: true, in: 'themes' }), 'DIRS\nthemes\n');
   // nullish items are skipped
-  assert.strictEqual(s(['a', null as unknown as string, 'b']), 'NODEFAULT\na\nb\nEOF\n');
+  assert.strictEqual(s(['a', null as unknown as string, 'b']), 'NODEFAULT\na\nb\n');
+  // multi-line descriptions are clamped to their first line (the wire
+  // format is line-based; extra lines would read as extra candidates)
+  assert.strictEqual(
+    s([{ value: 'push', description: 'Update remote refs\nalong with associated objects' }]),
+    'NODEFAULT\npush\tUpdate remote refs\n'
+  );
+  assert.strictEqual(
+    s([{ value: 'push', description: 'first\r\nsecond' }]),
+    'NODEFAULT\npush\tfirst\n'
+  );
+  // a description that is only a newline collapses to no description
+  assert.strictEqual(s([{ value: 'push', description: '\nrest' }]), 'NODEFAULT\npush\n');
 });
 
 test('serialize supports per-item noSpace via NOSPACE + trailing-space padding', () => {
@@ -61,18 +73,18 @@ test('serialize supports per-item noSpace via NOSPACE + trailing-space padding',
   // mixed: NOSPACE flagged; space-wanting candidates get padded instead
   assert.strictEqual(
     s([{ value: '--flag=', noSpace: true }, '--all']),
-    'NODEFAULT NOSPACE\n--flag=\n--all \nEOF\n'
+    'NODEFAULT NOSPACE\n--flag=\n--all \n'
   );
   assert.strictEqual(
     s({ items: [{ value: 'host:', noSpace: true }, { value: 'up', description: 'd' }] }),
-    'NODEFAULT NOSPACE\nhost:\nup \td\nEOF\n'
+    'NODEFAULT NOSPACE\nhost:\nup \td\n'
   );
   // all-noSpace: just the flag, no padding
-  assert.strictEqual(s([{ value: 'a/', noSpace: true }]), 'NODEFAULT NOSPACE\na/\nEOF\n');
+  assert.strictEqual(s([{ value: 'a/', noSpace: true }]), 'NODEFAULT NOSPACE\na/\n');
   // the flag rides the tag line for DEFAULT too
   assert.strictEqual(
     s({ items: [{ value: 'x=', noSpace: true }], default: true }),
-    'DEFAULT NOSPACE\nx=\nEOF\n'
+    'DEFAULT NOSPACE\nx=\n'
   );
 });
 
@@ -87,7 +99,7 @@ test('handle strips the proto stamp and splits words / cursor word', async () =>
     ['bash/1', 'push', '--f'],
     { out }
   );
-  assert.strictEqual(out.text(), 'NODEFAULT\n--force\n--tags\nEOF\n');
+  assert.strictEqual(out.text(), 'NODEFAULT\n--force\n--tags\n');
 });
 
 test('handle treats a proto-only request as completing the first word', async () => {
@@ -101,7 +113,7 @@ test('handle treats a proto-only request as completing the first word', async ()
     ['zsh/1'],
     { out }
   );
-  assert.strictEqual(out.text(), 'NODEFAULT\nEOF\n');
+  assert.strictEqual(out.text(), 'NODEFAULT\n');
 });
 
 test('handle answers NODEFAULT with no candidates when the callback throws', async () => {
@@ -113,19 +125,19 @@ test('handle answers NODEFAULT with no candidates when the callback throws', asy
     ['bash/1', 'x'],
     { out }
   );
-  assert.strictEqual(out.text(), 'NODEFAULT\nEOF\n');
+  assert.strictEqual(out.text(), 'NODEFAULT\n');
 });
 
 test('handle awaits async callbacks', async () => {
   const out = sink();
   await ac.handle(async () => ({ items: ['async-ok'] }), ['fish/1', ''], { out });
-  assert.strictEqual(out.text(), 'NODEFAULT\nasync-ok\nEOF\n');
+  assert.strictEqual(out.text(), 'NODEFAULT\nasync-ok\n');
 });
 
 test('handle treats no return value as "let the shell do files"', async () => {
   const out = sink();
   await ac.handle(() => undefined, ['bash/1', ''], { out });
-  assert.strictEqual(out.text(), 'DEFAULT\nEOF\n');
+  assert.strictEqual(out.text(), 'DEFAULT\n');
 });
 
 test('installation emits a stub per shell and rejects unknown shells', () => {
@@ -134,7 +146,6 @@ test('installation emits a stub per shell and rejects unknown shells', () => {
     assert.ok(s.includes('demo'), shell + ' stub names the program');
     assert.ok(s.includes('__complete'), shell + ' stub invokes the request');
     assert.ok(s.includes(`${shell}/${ac.stubs.PROTOCOL}`), shell + ' stub sends its proto stamp');
-    assert.ok(s.includes('EOF'), shell + ' stub checks the terminator');
   }
   assert.throws(
     () => ac.installation({ request: '__complete', name: 'demo', shell: 'powershell' as ac.Shell }),
@@ -152,7 +163,7 @@ test('installation defaults the name from the invoked script, and requires a req
   // Under `node dist/test.js`, process.argv[1] ends in test.js -> name "test".
   const inst = ac.installation({ request: '__complete', shell: 'bash' });
   assert.strictEqual(inst.name, 'test');
-  assert.ok(inst.script.includes('complete -F _test_complete test'), 'derived name "test"');
+  assert.ok(inst.script.includes('complete -o nospace -F _test_complete test'), 'derived name "test"');
   assert.throws(() => ac.installation({ request: '' }), /request token/);
 });
 

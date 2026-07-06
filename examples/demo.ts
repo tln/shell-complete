@@ -21,6 +21,7 @@ const REQUEST = '__complete';
 interface Flag {
   name: string;
   desc: string;
+  noSpace?: boolean;
 }
 interface Command {
   desc: string;
@@ -35,6 +36,7 @@ const COMMANDS: Record<string, Command> = {
     flags: [
       { name: '--force', desc: 'Force update' },
       { name: '--tags', desc: 'Push tags too' },
+      { name: '--remote=', desc: 'Push destination', noSpace: true },
     ],
   },
   add: {
@@ -63,7 +65,7 @@ function complete(words: string[], toComplete: string): Reply {
       return vals.map((v) => '--remote=' + v);
     }
     if (toComplete.startsWith('-')) {
-      return cmd.flags.map((f) => ({ value: f.name, description: f.desc }));
+      return cmd.flags.map((f) => ({ value: f.name, description: f.desc, noSpace: f.noSpace }));
     }
   }
 

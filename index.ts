@@ -8,7 +8,8 @@ export { stubs };
 export type { Shell };
 
 // A completion candidate: a bare string, or a value with an optional
-// description. `noSpace` marks this candidate as one the user keeps typing
+// description (single line; anything past the first newline is dropped).
+// `noSpace` marks this candidate as one the user keeps typing
 // into (e.g. `--flag=`, `host:`): no space is appended after inserting it,
 // even when other candidates in the same reply do get one.
 export type Item = string | { value: string; description?: string; noSpace?: boolean };
@@ -56,11 +57,11 @@ export interface HandleOptions {
 
 // Serialize a Reply into the wire format.
 //
-//   serialize(['a'])                      -> 'NODEFAULT\na\nEOF\n'
-//   serialize(undefined)                  -> 'DEFAULT\nEOF\n'
-//   serialize({ items, default: true })   -> 'DEFAULT\n<item lines>\nEOF\n'
-//   serialize({ ext: ['md'] })            -> 'EXT\nmd\nEOF\n'
-//   serialize({ dirs: true, in: 'x' })    -> 'DIRS\nx\nEOF\n'
+//   serialize(['a'])                      -> 'NODEFAULT\na\n'
+//   serialize(undefined)                  -> 'DEFAULT\n'
+//   serialize({ items, default: true })   -> 'DEFAULT\n<item lines>\n'
+//   serialize({ ext: ['md'] })            -> 'EXT\nmd\n'
+//   serialize({ dirs: true, in: 'x' })    -> 'DIRS\nx\n'
 //
 // Per-item noSpace uses git-completion's idiom: the NOSPACE flag can only say
 // "no space for everyone", so when a reply mixes both kinds the space-wanting
@@ -90,14 +91,14 @@ export function serialize(reply: Reply): string {
     for (const it of items) {
       if (typeof it === 'string') {
         lines.push(it);
-      } else if (it.description) {
-        lines.push(it.value + '\t' + it.description);
       } else {
-        lines.push(it.value);
+        // The wire format is one candidate per line, so a multi-line
+        // description would be read as extra candidates: keep its first line.
+        const description = it.description && it.description.split(/\r?\n/, 1)[0];
+        lines.push(description ? it.value + '\t' + description : it.value);
       }
     }
   }
-  lines.push('EOF');
   return lines.join('\n') + '\n';
 }
 

@@ -118,14 +118,13 @@ The stamp (e.g. `bash/1`) tells the program which stub generation is calling,
 so a newer binary can keep answering stubs installed by an older one. The last
 argument is the (possibly empty) word under the cursor.
 
-The reply is a tag line, payload lines, and a terminator:
+The reply is a tag line followed by payload lines, read to end of output:
 
 ```
 $ node dist/examples/demo.js __complete bash/1 push --
 NODEFAULT
 --force	Force update
 --tags	Push tags too
-EOF
 ```
 
 | Tag | Payload | Meaning | Reply spelling |
@@ -138,9 +137,8 @@ EOF
 Candidate lines are `<value>\t<description>` (description optional). The tag
 line may carry flags after the tag: `NOSPACE` (don't append a space after
 insertion; space-wanting candidates in a mixed reply arrive pre-padded with a
-trailing space). The final `EOF` line guards against a program that died
-mid-reply — a stub that doesn't see it shows nothing. Unknown tags also render
-nothing, so old stubs degrade safely against newer binaries.
+trailing space). Unknown tags render nothing, so old stubs degrade safely
+against newer binaries.
 
 ## Develop
 
