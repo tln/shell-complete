@@ -33,6 +33,14 @@
   ],
   "license": "MIT",
   "author": "tony@lownds.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tln/shell-complete.git"
+  },
+  "homepage": "https://github.com/tln/shell-complete#readme",
+  "bugs": {
+    "url": "https://github.com/tln/shell-complete/issues"
+  },
   "engines": {
     "node": ">= 12"
   },
