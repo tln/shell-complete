@@ -27,7 +27,7 @@ async function main() {
 
   if (cmd === 'completion') {
     const inst = installation({ request: REQUEST, shell: rest[0] as Shell | undefined ?? 'auto' });
-    if (rest.includes('--install')) console.log(inst.install()); // write to the autoload dir
+    if (rest.includes('--install')) inst.install(); // write to the autoload dir; prints path + any activation hint
     else process.stdout.write(inst.script); // print for eval/source
     return;
   }
@@ -41,12 +41,15 @@ CommonJS works too: `const { handle, installation } = require('shell-complete')`
 Two ways to install the completion:
 
 ```sh
-# 1. One-shot: write the stub into the shell's per-user autoload dir — no
-#    dotfile editing (fish: always works; bash: needs the bash-completion 2.x
-#    package; zsh: put `fpath+=~/.zfunc` before compinit).
+# 1. One-shot: write the stub into the shell's per-user autoload dir.
+#    install() probes whether the shell will actually load it there (fish:
+#    always; bash: needs bash-completion 2.x loaded; zsh: the dir must be on
+#    fpath before compinit) — and when it won't, prints the one rc line that
+#    activates the written stub instead (a static `source`: no startup cost).
 myprog completion --install
 
-# 2. Regenerate at shell startup, so the stub never drifts from the binary:
+# 2. Regenerate at shell startup, so the stub never drifts from the binary.
+#    Costs one program spawn per shell startup — prefer 1 if yours is slow:
 eval "$(myprog completion bash)"   # ~/.bashrc
 eval "$(myprog completion zsh)"    # ~/.zshrc
 myprog completion fish | source    # ~/.config/fish/config.fish
@@ -96,9 +99,17 @@ Per-item `noSpace` may be mixed freely with normal candidates.
   - `.script` — the stub text (print it for the eval/source flow)
   - `.source(...args)` — the rc one-liner (`eval "$(myprog completion zsh)"`,
     fish: `myprog completion fish | source`); `args` is however your CLI
-    spells "print the stub" (default `completion <shell>`)
+    spells "print the stub" (default `completion <shell>`); spawns your
+    program at every shell startup, so prefer `install()` when that's too slow
   - `.installPath` — the shell's per-user autoload dir for this program
-  - `.install()` — write the stub there (creating dirs) and return the path
+  - `.installWarning` — why the shell may not autoload `installPath`, with
+    the one rc line that fixes it (`[ -f <path> ] && . <path>` /
+    `source <path>` — static, no startup spawn) — or `undefined` when
+    autoload will just work. Probed lazily on first access (spawns the shell
+    once) and cached; reading it never writes anything.
+  - `.install(opts?)` — write the stub to `installPath` (creating dirs) and
+    report to `opts.out` (default stdout): the path, then `installWarning`
+    if set. Returns the written path.
 - **`serialize(reply): string`** — lower a `Reply` to the wire format (used
   internally by `handle`; exposed for custom transports).
 - **`stubs`** — the low-level per-shell generators

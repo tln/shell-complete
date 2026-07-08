@@ -222,19 +222,120 @@ test('installation.installPath targets each shell\'s autoload dir', () => {
   }
 });
 
-test('installation.install writes the stub and returns the path', () => {
+// Probe fixtures: the probe reads footprints from an interactive login shell,
+// which reads rc files from $HOME — so a throwaway home fakes any machine.
+function withFixtureHome<T>(files: Record<string, string>, fn: () => T): T {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-complete-home-'));
+  for (const name of Object.keys(files)) {
+    fs.writeFileSync(path.join(home, name), files[name]);
+  }
+  const saved: Record<string, string | undefined> = {};
+  // HOME steers both the spawned shell's rc files and installPath (os.homedir);
+  // the rest would leak the real machine's completion setup into the fixture.
+  for (const v of ['HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'BASH_COMPLETION_USER_DIR', 'ZDOTDIR']) {
+    saved[v] = process.env[v];
+    delete process.env[v];
+  }
+  process.env.HOME = home;
+  try {
+    return fn();
+  } finally {
+    for (const v of Object.keys(saved)) {
+      if (saved[v] == null) delete process.env[v];
+      else process.env[v] = saved[v];
+    }
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+test('installWarning probes bash without side effects (bare home: not loaded)', () => {
+  withFixtureHome({}, () => {
+    const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'bash' });
+    const w = inst.installWarning;
+    assert.ok(w && w.includes('bash-completion 2.x is not loaded'), String(w));
+    assert.ok(w!.includes(`. "${inst.installPath}"`), 'includes the activating rc line');
+    assert.ok(!fs.existsSync(inst.installPath), 'probing writes nothing');
+  });
+});
+
+test('installWarning is undefined when the bash loader footprint is present', () => {
+  // The probe checks the variable bash-completion sets, so a fixture rc can
+  // fake the loader without installing the package. Noise checks the sentinel
+  // parse: rc output must not confuse the probe.
+  withFixtureHome(
+    { '.bash_profile': 'echo starting up!\nBASH_COMPLETION_VERSINFO=(2 14)\n' },
+    () => {
+      const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'bash' });
+      assert.strictEqual(inst.installWarning, undefined);
+    }
+  );
+});
+
+test('installWarning explains zsh fpath / compinit states', () => {
+  // bare home: ~/.zfunc is not on fpath
+  withFixtureHome({}, () => {
+    const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'zsh' });
+    const w = inst.installWarning;
+    assert.ok(w && w.includes('is not on your zsh fpath'), String(w));
+    assert.ok(w!.includes(`source "${inst.installPath}"`), 'fix line sources the stub');
+  });
+  // fpath is right but compinit never runs: soft warning, not a hard no
+  withFixtureHome({ '.zshrc': 'fpath+=$HOME/.zfunc\n' }, () => {
+    const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'zsh' });
+    const w = inst.installWarning;
+    assert.ok(w && w.includes('could not verify that compinit runs'), String(w));
+  });
+  // fpath + compinit (-u: skip the tty-bound security prompt): autoload works
+  withFixtureHome(
+    { '.zshrc': 'fpath+=$HOME/.zfunc\nautoload -Uz compinit && compinit -u\n' },
+    () => {
+      const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'zsh' });
+      assert.strictEqual(inst.installWarning, undefined);
+    }
+  );
+});
+
+test('installation.install writes the stub and reports the path', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-complete-install-'));
   const saved = process.env.XDG_CONFIG_HOME;
   try {
     process.env.XDG_CONFIG_HOME = tmp;
     const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'fish' });
-    const written = inst.install();
-    assert.strictEqual(written, inst.installPath);
-    assert.ok(written.startsWith(tmp), 'honors $XDG_CONFIG_HOME');
-    assert.strictEqual(fs.readFileSync(written, 'utf8'), inst.script);
+    const out = sink();
+    const written = inst.install({ out });
+    assert.strictEqual(written, inst.installPath, 'returns the written path (0.1.1 compat)');
+    assert.ok(inst.installPath.startsWith(tmp), 'honors $XDG_CONFIG_HOME');
+    assert.strictEqual(fs.readFileSync(inst.installPath, 'utf8'), inst.script);
+    // fish autoloads by filename: no probe, no activation hint
+    assert.strictEqual(out.text(), `installed fish completion: ${inst.installPath}\n`);
   } finally {
     if (saved == null) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = saved;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('installation.install probes bash and prints the fix line unless autoload is live', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-complete-install-'));
+  const saved = process.env.BASH_COMPLETION_USER_DIR;
+  try {
+    process.env.BASH_COMPLETION_USER_DIR = tmp;
+    const inst = ac.installation({ request: '__complete', name: 'demo', shell: 'bash' });
+    const out = sink();
+    inst.install({ out });
+    assert.strictEqual(fs.readFileSync(inst.installPath, 'utf8'), inst.script, 'stub written');
+    const text = out.text();
+    assert.ok(text.startsWith(`installed bash completion: ${inst.installPath}\n`), text);
+    // the probe's verdict is machine-dependent; the invariant is the shape:
+    // either the single installed line, or an activation hint sourcing the stub
+    const rest = text.slice(text.indexOf('\n') + 1);
+    if (rest !== '') {
+      assert.ok(rest.includes('To activate, add this line to ~/.bashrc:'), text);
+      assert.ok(rest.includes(`. "${inst.installPath}"`), 'hint sources the written stub');
+    }
+  } finally {
+    if (saved == null) delete process.env.BASH_COMPLETION_USER_DIR;
+    else process.env.BASH_COMPLETION_USER_DIR = saved;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

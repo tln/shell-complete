@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     const shellArg = rest.find((a) => !a.startsWith('--')) as ac.Shell | undefined;
     const inst = ac.installation({ request: REQUEST, shell: shellArg || 'auto' });
     if (rest.includes('--install')) {
-      console.log(inst.install());
+      inst.install(); // writes the stub, prints the path + activation hint
     } else {
       process.stdout.write(inst.script);
     }

@@ -1,3 +1,4 @@
+import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -147,17 +148,83 @@ export interface Installation {
   shell: Shell; // resolved target shell
   name: string; // resolved program name
   script: string; // the stub itself — print it for the eval/source flow
-  // The rc one-liner that regenerates the stub each shell startup. `args` is
-  // how *your* CLI prints the stub (default: 'completion <shell>'):
+  // The rc one-liner that regenerates the stub each shell startup — spawns
+  // the program every startup; prefer install() where that's too slow.
+  // `args` is how *your* CLI prints the stub (default: 'completion <shell>'):
   //   bash/zsh:  eval "$(myprog completion zsh)"
   //   fish:      myprog completion fish | source
   source(...args: string[]): string;
-  // Where install() writes: the shell's per-user autoload dir, so completion
-  // works with no rc edit (fish: always; bash: needs the bash-completion 2.x
-  // package; zsh: ~/.zfunc must be on fpath before compinit).
+  // Where install() writes: the shell's per-user autoload dir (fish: always
+  // loads; bash: loads under bash-completion 2.x; zsh: loads when the dir is
+  // on fpath before compinit). When autoload doesn't work, the same file is
+  // the target of the one-line rc fix, so the path is meaningful either way.
   installPath: string;
-  // Write the stub to installPath (creating directories) and return the path.
-  install(): string;
+  // Why the shell may not autoload installPath, with the one rc line that
+  // fixes it — or undefined when autoload will just work. Probed lazily on
+  // first access (spawns the shell once, rc files included) and cached.
+  // Reading it never touches the filesystem; install() prints it.
+  readonly installWarning: string | undefined;
+  // Write the stub to installPath (creating directories), probe whether the
+  // shell will load it, and report to opts.out (default stdout): the path,
+  // plus — when autoload won't kick in — the rc line that activates it.
+  // Returns the written path (as in 0.1.1; note it now also prints).
+  install(opts?: { out?: Writable }): string;
+}
+
+// Ask the user's actual shell whether installPath will be consulted, by
+// running it as an interactive login shell (so rc files are read, matching a
+// real terminal) and printing a sentinel. fish needs no probe: the filename
+// is the registration. Anything inconclusive is 'unknown', not a hard no —
+// install() then shows the fix line without claiming the install is broken.
+const SENTINEL = '__shell_complete_probe_';
+
+function probeActivation(
+  shell: Shell,
+  installPath: string
+): { active: boolean | 'unknown'; reason?: string } {
+  if (shell === 'fish') return { active: true };
+
+  const dir = path.dirname(installPath);
+  const cmd =
+    shell === 'bash'
+      ? // set by bash-completion >= 2.8 when its lazy loader is live
+        `echo ${SENTINEL}\${BASH_COMPLETION_VERSINFO[0]:-no}`
+      : // compdef exists (compinit ran) + our dir's position in fpath (0 = absent)
+        `print -r -- ${SENTINEL}\${+functions[compdef]}_\${fpath[(Ie)\$SHELL_COMPLETE_PROBE_DIR]}`;
+  const r = cp.spawnSync(shell, ['-lic', cmd], {
+    encoding: 'utf8',
+    timeout: 5000,
+    env: Object.assign({}, process.env, { SHELL_COMPLETE_PROBE_DIR: dir }),
+  });
+  // rc files may print anything; only trust the sentinel.
+  const m = (r.stdout || '').match(new RegExp(SENTINEL + '(\\S*)'));
+  if (r.error || !m) return { active: 'unknown' };
+
+  if (shell === 'bash') {
+    if (m[1] === 'no') {
+      return { active: false, reason: 'bash-completion 2.x is not loaded in your bash' };
+    }
+    return { active: true };
+  }
+  const parts = m[1].match(/^(\d+)_(\d+)$/);
+  if (!parts) return { active: 'unknown' };
+  if (parts[2] === '0') return { active: false, reason: `${dir} is not on your zsh fpath` };
+  if (parts[1] === '0') {
+    // compinit prompts on insecure dirs and aborts without a terminal, so a
+    // piped probe can miss a compinit that works fine in a real terminal.
+    return { active: 'unknown', reason: 'could not verify that compinit runs in your zsh' };
+  }
+  return { active: true };
+}
+
+// The one rc line that activates an installed stub when autoload doesn't.
+// Static — sourcing the stub only defines functions, so unlike evalSource it
+// costs no program spawn at shell startup. The zsh stub self-boots compinit,
+// so plain `source` works there too.
+function fixLine(shell: Shell, installPath: string): string {
+  return shell === 'bash'
+    ? `[ -f "${installPath}" ] && . "${installPath}"`
+    : `source "${installPath}"`;
 }
 
 function detectShell(): Shell {
@@ -202,18 +269,43 @@ export function installation(opts: InstallationOptions): Installation {
 
   const script = stubs.script(name, shell, request); // throws on unknown shell
   const installPath = defaultInstallPath(shell, name);
+  // Lazy probe: run at most once, on first installWarning read (or install()).
+  let probed = false;
+  let warning: string | undefined;
+  const installWarning = (): string | undefined => {
+    if (!probed) {
+      probed = true;
+      const p = probeActivation(shell, installPath);
+      if (p.active !== true) {
+        const rc = shell === 'zsh' ? '~/.zshrc' : '~/.bashrc';
+        const why = p.reason || `could not verify that ${shell} will load it`;
+        warning =
+          `${why}; completions may not load in new shells.\n` +
+          `To activate, add this line to ${rc}:\n` +
+          `  ${fixLine(shell, installPath)}`;
+      }
+    }
+    return warning;
+  };
   return {
     shell,
     name,
     script,
     installPath,
+    get installWarning(): string | undefined {
+      return installWarning();
+    },
     source(...args: string[]): string {
       const cmd = [name, ...(args.length ? args : ['completion', shell])].join(' ');
       return shell === 'fish' ? `${cmd} | source` : `eval "$(${cmd})"`;
     },
-    install(): string {
+    install(installOpts?: { out?: Writable }): string {
+      const out = (installOpts && installOpts.out) || process.stdout;
       fs.mkdirSync(path.dirname(installPath), { recursive: true });
       fs.writeFileSync(installPath, script);
+      out.write(`installed ${shell} completion: ${installPath}\n`);
+      const w = installWarning();
+      if (w) out.write(w + '\n');
       return installPath;
     },
   };
