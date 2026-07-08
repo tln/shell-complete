@@ -1,6 +1,6 @@
 {
   "name": "shell-complete",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Dynamic shell completion engine for CLIs — Cobra-style __complete protocol for bash, zsh, and fish",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
