@@ -211,34 +211,41 @@ for (const shell of SHELLS) {
 }
 
 // --- EXT / DIRS glued behind a `--flag=`: the = wordbreak must be stripped ---
-// The DEFAULT/NODEFAULT branches strip the `--flag=` prefix before completing,
-// but the EXT and DIRS branches don't, so `--dir=`/`--file=` yield nothing.
-for (const shell of SHELLS) {
-  test.skip(
-    'EXT branch does not strip the --flag= wordbreak prefix before delegating',
-    `${shell}: EXT completes values after --file=`,
-    async () => {
-      const { candidates } = await getCompletions(shell, 'demo push --file=', {
-        files: ['keep.txt', 'ignore.log'],
-      });
-      const got = JSON.stringify(candidates);
-      assert.ok(candidates.some((c) => c.indexOf('keep.txt') !== -1), 'want keep.txt; got ' + got);
-      assert.ok(!candidates.some((c) => c.indexOf('ignore.log') !== -1), 'ignore.log filtered; got ' + got);
-    }
-  );
-
-  test.skip(
-    'DIRS branch does not strip the --flag= wordbreak prefix before delegating',
-    `${shell}: DIRS completes values after --dir=`,
-    async () => {
-      const { candidates } = await getCompletions(shell, 'demo push --dir=', {
-        dirs: ['themes'],
-      });
-      const got = JSON.stringify(candidates);
-      assert.ok(bare(candidates).some((c) => c.indexOf('themes') !== -1), 'want themes; got ' + got);
-    }
-  );
+// bash & zsh strip the `--flag=` prefix before delegating (like the DEFAULT
+// branch does); two candidates are seeded so the completion is ambiguous and
+// renders a listing. fish's stub does not strip the prefix yet, so it's skipped.
+const extAfterFlag = async (shell: Shell): Promise<void> => {
+  const { candidates } = await getCompletions(shell, 'demo push --file=', {
+    files: ['keep.txt', 'more.txt', 'ignore.log'],
+  });
+  const got = JSON.stringify(candidates);
+  assert.ok(candidates.some((c) => c.indexOf('keep.txt') !== -1), 'want keep.txt; got ' + got);
+  assert.ok(candidates.some((c) => c.indexOf('more.txt') !== -1), 'want more.txt; got ' + got);
+  assert.ok(!candidates.some((c) => c.indexOf('ignore.log') !== -1), 'ignore.log filtered; got ' + got);
+};
+const dirsAfterFlag = async (shell: Shell): Promise<void> => {
+  const { candidates } = await getCompletions(shell, 'demo push --dir=', {
+    dirs: ['themes', 'docs'],
+  });
+  const got = JSON.stringify(candidates);
+  const b = bare(candidates);
+  assert.ok(b.some((c) => c.indexOf('themes') !== -1), 'want themes; got ' + got);
+  assert.ok(b.some((c) => c.indexOf('docs') !== -1), 'want docs; got ' + got);
+};
+for (const shell of ['bash', 'zsh'] as Shell[]) {
+  test(`${shell}: EXT completes values after --file=`, () => extAfterFlag(shell));
+  test(`${shell}: DIRS completes values after --dir=`, () => dirsAfterFlag(shell));
 }
+test.skip(
+  'fish EXT branch does not strip the --flag= wordbreak prefix (nor filter by ext)',
+  'fish: EXT completes values after --file=',
+  () => extAfterFlag('fish')
+);
+test.skip(
+  'fish DIRS branch does not strip the --flag= wordbreak prefix',
+  'fish: DIRS completes values after --dir=',
+  () => dirsAfterFlag('fish')
+);
 
 // --- `:` wordbreak: host:path values reach the program whole, undoubled ---
 for (const shell of SHELLS) {

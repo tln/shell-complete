@@ -56,6 +56,14 @@ ${fn}() {
     ${fn}_reassemble
     local cur=\${words[cword]}
 
+    # The sub-word readline actually completes: the text after the last
+    # wordbreak (= or :) it split on. Delegated completion (EXT/DIRS) runs
+    # against this, not the whole --flag=value word.
+    local curw=$cur _wbc
+    for _wbc in = :; do
+        [[ $curw == *$_wbc* && $COMP_WORDBREAKS == *$_wbc* ]] && curw=\${curw##*$_wbc}
+    done
+
     local out line
     out="$(${name} ${request} bash/${PROTOCOL} "\${words[@]:1:cword}" 2>/dev/null)"
 
@@ -114,9 +122,9 @@ ${fn}() {
         local ext i
         for ext in "\${payload[@]}"; do
             while IFS= read -r line; do COMPREPLY+=("$line"); done \\
-                < <(compgen -f -X "!*.$ext" -- "$cur")
+                < <(compgen -f -X "!*.$ext" -- "$curw")
         done
-        while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -d -- "$cur")
+        while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -d -- "$curw")
         if ! compopt +o nospace -o filenames 2>/dev/null; then
             for ((i = 0; i < \${#COMPREPLY[@]}; i++)); do
                 if [[ -d \${COMPREPLY[i]} ]]; then COMPREPLY[i]+=/; else COMPREPLY[i]+=' '; fi
@@ -126,7 +134,7 @@ ${fn}() {
     DIRS)
         local i
         while IFS= read -r line; do COMPREPLY+=("$line"); done \\
-            < <(cd "\${payload[0]:-.}" 2>/dev/null && compgen -d -- "$cur")
+            < <(cd "\${payload[0]:-.}" 2>/dev/null && compgen -d -- "$curw")
         if ! compopt +o nospace -o filenames 2>/dev/null; then
             for ((i = 0; i < \${#COMPREPLY[@]}; i++)); do
                 COMPREPLY[i]+=/
@@ -192,9 +200,11 @@ ${fn}() {
         local -a globs
         local ext
         for ext in $payload; do globs+=(-g "*.$ext"); done
+        compset -P '*[=:]'                        # complete the value after --flag= / host:
         _files $globs
         ;;
     DIRS)
+        compset -P '*[=:]'                        # complete the value after --flag= / host:
         if [[ -n \${payload[1]:-} ]]; then
             pushd -q \${payload[1]} 2>/dev/null || return
             _files -/
