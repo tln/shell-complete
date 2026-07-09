@@ -162,10 +162,11 @@ against newer binaries.
   `COMP_WORDBREAKS`: the stub re-joins the split tokens for the request and
   trims the already-typed prefix from the reply. (bash therefore *displays*
   the part after `=`/`:`; zsh and fish display whole words.)
-- `{ ext }` / `{ dirs }` delegate natively in bash (`compgen`) and zsh
-  (`_files`); in fish they use `__fish_complete_suffix` /
-  `__fish_complete_directories` when available (`in` is ignored), degrading
-  to plain file completion otherwise.
+- `{ ext }` and `{ dirs }` filter correctly in bash (`compgen`) and zsh
+  (`_files`), including when the value is glued behind a `--flag=`. fish is
+  weaker: `{ dirs }` works after a space, but `{ ext }` does not filter by
+  extension (it lists all files), and neither strips a `--flag=` prefix, so
+  `--file=` / `--dir=` values don't complete under fish.
 - `noSpace` is honored in bash/zsh; fish ignores it (candidates still
   complete, with a space).
 - Candidate order is preserved in zsh, fish, and bash ≥ 4.4; older bash —
