@@ -46,8 +46,6 @@ test('serialize lowers each Reply shape to the wire format', () => {
     s([{ value: 'push', description: 'Update remote refs' }, 'add']),
     'NODEFAULT\npush\tUpdate remote refs\nadd\n'
   );
-  // name-or-path: candidates plus file fallback
-  assert.strictEqual(s({ items: ['a'], default: true }), 'DEFAULT\na\n');
   // delegated, filtered file completion (payload = filter args)
   assert.strictEqual(s({ ext: ['md', 'docx'] }), 'EXT\nmd\ndocx\n');
   assert.strictEqual(s({ dirs: true }), 'DIRS\n');
@@ -81,11 +79,6 @@ test('serialize supports per-item noSpace via NOSPACE + trailing-space padding',
   );
   // all-noSpace: just the flag, no padding
   assert.strictEqual(s([{ value: 'a/', noSpace: true }]), 'NODEFAULT NOSPACE\na/\n');
-  // the flag rides the tag line for DEFAULT too
-  assert.strictEqual(
-    s({ items: [{ value: 'x=', noSpace: true }], default: true }),
-    'DEFAULT NOSPACE\nx=\n'
-  );
 });
 
 test('handle strips the proto stamp and splits words / cursor word', async () => {

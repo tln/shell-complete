@@ -46,16 +46,10 @@ const COMMANDS: Record<string, Command> = {
     desc: 'Add file contents',
     flags: [{ name: '--all', desc: 'Add all files' }],
   },
-  // Positional-argument directives: files-by-extension, dirs, dirs-in-a-subdir,
-  // and a name-or-path arg (candidates plus a file fallback).
+  // Positional-argument directives: files-by-extension, dirs, dirs-in-a-subdir.
   edit: { desc: 'Edit a file', flags: [], reply: { ext: ['txt', 'md'] } },
   cd: { desc: 'Change directory', flags: [], reply: { dirs: true } },
   theme: { desc: 'Pick a theme', flags: [], reply: { dirs: true, in: 'themes' } },
-  switch: {
-    desc: 'Switch branches',
-    flags: [],
-    reply: { items: ['HEAD', 'main'], default: true },
-  },
 };
 
 // complete(words, toComplete) -> Reply. A returned array means "these

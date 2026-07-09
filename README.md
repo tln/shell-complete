@@ -62,8 +62,7 @@ type Item = string | { value: string; description?: string; noSpace?: boolean };
 type Reply =
   | Item[]              // candidates, nothing else (no file fallback)
   | null | undefined    // no opinion — shell does its default (files)
-  | { items?: Item[]; default?: boolean }
-                        // candidates; default: true also offers files as fallback
+  | { items?: Item[] }  // candidates, nothing else (object form of Item[])
   | { ext: string[] }   // shell's file completion, these extensions only
   | { dirs: true; in?: string };  // directories only (optionally under ./in)
 type CompleteFn = (words: string[], toComplete: string) => Reply | Promise<Reply>;
@@ -74,7 +73,6 @@ Every shape is a plain literal — no imports needed in completion code:
 
 ```ts
 return ['add', 'clone'];                       // candidates only
-return { items: names, default: true };        // name-or-path: files as fallback
 return { ext: ['json', 'yaml'] };              // shell completes *.json / *.yaml
 return { dirs: true, in: 'themes' };           // directories under ./themes
 return [{ value: '--flag=', noSpace: true }];  // keep typing after insertion
@@ -140,7 +138,7 @@ NODEFAULT
 
 | Tag | Payload | Meaning | Reply spelling |
 |-----|---------|---------|----------------|
-| `DEFAULT` | candidates (may be none) | offer these; fall back to file completion | `null`/`undefined`, `{ items, default: true }` |
+| `DEFAULT` | none | the shell's default (file) completion | `null`/`undefined` |
 | `NODEFAULT` | candidates (may be none) | offer these and nothing else | `Item[]`, `{ items }`, `throw` (empty) |
 | `EXT` | extensions | shell-native file completion, filtered | `{ ext: [...] }` |
 | `DIRS` | optional start dir | directories only | `{ dirs: true, in? }` |

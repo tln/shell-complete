@@ -38,15 +38,7 @@ const bare = (a: string[]): string[] => a.map((c) => c.replace(/\/+$/, ''));
 for (const shell of SHELLS) {
   test(`${shell}: first word completes subcommands`, async () => {
     const { candidates } = await getCompletions(shell, 'demo ');
-    assert.deepStrictEqual(sorted(candidates), [
-      'add',
-      'cd',
-      'clone',
-      'edit',
-      'push',
-      'switch',
-      'theme',
-    ]);
+    assert.deepStrictEqual(sorted(candidates), ['add', 'cd', 'clone', 'edit', 'push', 'theme']);
   });
 
   test(`${shell}: completes flags of a subcommand`, async () => {
@@ -190,25 +182,6 @@ test.skip(
     assert.ok(got.indexOf('decoy') === -1, JSON.stringify(candidates));
   }
 );
-
-// --- DEFAULT + candidates (name-or-path): candidates AND file completion ---
-// Today the stubs only fall back to files when *no* candidate matches, so a
-// name-or-path arg can't show both at once. Skipped until that's implemented.
-for (const shell of SHELLS) {
-  test.skip(
-    'stubs file-fallback only when zero candidates match; name-or-path not merged',
-    `${shell}: DEFAULT with candidates also offers files`,
-    async () => {
-      const { candidates } = await getCompletions(shell, 'demo switch ', {
-        files: ['ZZpathmarker'],
-      });
-      const got = JSON.stringify(candidates);
-      assert.ok(candidates.indexOf('HEAD') !== -1, 'want HEAD; got ' + got);
-      assert.ok(candidates.indexOf('main') !== -1, 'want main; got ' + got);
-      assert.ok(candidates.indexOf('ZZpathmarker') !== -1, 'want the file too; got ' + got);
-    }
-  );
-}
 
 // --- EXT / DIRS glued behind a `--flag=`: the = wordbreak must be stripped ---
 // bash & zsh strip the `--flag=` prefix before delegating (like the DEFAULT

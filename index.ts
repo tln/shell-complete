@@ -16,13 +16,10 @@ export type { Shell };
 export type Item = string | { value: string; description?: string; noSpace?: boolean };
 
 // Candidates to offer, in this order (the shell's sort is suppressed;
-// pre-sort the array if you want alphabetical):
-//   items      the candidates
-//   default    true = also let the shell do its default (file) completion,
-//              e.g. for name-or-path arguments
+// pre-sort the array if you want alphabetical). These are the only
+// completions offered — return nothing instead to let the shell do files.
 export interface ItemsReply {
   items?: Item[];
-  default?: boolean;
 }
 
 // Delegate to the shell's own file completion, constrained. Not combinable
@@ -60,7 +57,6 @@ export interface HandleOptions {
 //
 //   serialize(['a'])                      -> 'NODEFAULT\na\n'
 //   serialize(undefined)                  -> 'DEFAULT\n'
-//   serialize({ items, default: true })   -> 'DEFAULT\n<item lines>\n'
 //   serialize({ ext: ['md'] })            -> 'EXT\nmd\n'
 //   serialize({ dirs: true, in: 'x' })    -> 'DIRS\nx\n'
 //
@@ -88,7 +84,7 @@ export function serialize(reply: Reply): string {
         noSpace(it) ? it : typeof it === 'string' ? it + ' ' : { ...it, value: it.value + ' ' }
       );
     }
-    lines.push((r.default ? 'DEFAULT' : 'NODEFAULT') + (anyNoSpace ? ' NOSPACE' : ''));
+    lines.push('NODEFAULT' + (anyNoSpace ? ' NOSPACE' : ''));
     for (const it of items) {
       if (typeof it === 'string') {
         lines.push(it);
