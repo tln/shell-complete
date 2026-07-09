@@ -28,8 +28,7 @@ export interface ExtReply {
   ext: string[]; // only files with these extensions (shells still offer dirs to descend)
 }
 export interface DirsReply {
-  dirs: true; // directories only ...
-  in?: string; // ... inside this directory
+  dirs: true; // directories only
 }
 
 export type ReplyObject = ItemsReply | ExtReply | DirsReply;
@@ -58,7 +57,7 @@ export interface HandleOptions {
 //   serialize(['a'])                      -> 'NODEFAULT\na\n'
 //   serialize(undefined)                  -> 'DEFAULT\n'
 //   serialize({ ext: ['md'] })            -> 'EXT\nmd\n'
-//   serialize({ dirs: true, in: 'x' })    -> 'DIRS\nx\n'
+//   serialize({ dirs: true })             -> 'DIRS\n'
 //
 // Per-item noSpace uses git-completion's idiom: the NOSPACE flag can only say
 // "no space for everyone", so when a reply mixes both kinds the space-wanting
@@ -73,7 +72,6 @@ export function serialize(reply: Reply): string {
     for (const ext of reply.ext) lines.push(ext);
   } else if ('dirs' in reply && !Array.isArray(reply) && reply.dirs) {
     lines.push('DIRS');
-    if (reply.in) lines.push(reply.in);
   } else {
     const r: ItemsReply = Array.isArray(reply) ? { items: reply } : (reply as ItemsReply);
     let items = (r.items || []).filter((it) => it != null);

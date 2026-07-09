@@ -64,7 +64,7 @@ type Reply =
   | null | undefined    // no opinion — shell does its default (files)
   | { items?: Item[] }  // candidates, nothing else (object form of Item[])
   | { ext: string[] }   // shell's file completion, these extensions only
-  | { dirs: true; in?: string };  // directories only (optionally under ./in)
+  | { dirs: true };     // directories only
 type CompleteFn = (words: string[], toComplete: string) => Reply | Promise<Reply>;
 type Shell = 'bash' | 'zsh' | 'fish';
 ```
@@ -74,7 +74,7 @@ Every shape is a plain literal — no imports needed in completion code:
 ```ts
 return ['add', 'clone'];                       // candidates only
 return { ext: ['json', 'yaml'] };              // shell completes *.json / *.yaml
-return { dirs: true, in: 'themes' };           // directories under ./themes
+return { dirs: true };                         // directories only
 return [{ value: '--flag=', noSpace: true }];  // keep typing after insertion
 throw err;                                     // fail dark (show nothing, no file noise)
 ```
@@ -141,7 +141,7 @@ NODEFAULT
 | `DEFAULT` | none | the shell's default (file) completion | `null`/`undefined` |
 | `NODEFAULT` | candidates (may be none) | offer these and nothing else | `Item[]`, `{ items }`, `throw` (empty) |
 | `EXT` | extensions | shell-native file completion, filtered | `{ ext: [...] }` |
-| `DIRS` | optional start dir | directories only | `{ dirs: true, in? }` |
+| `DIRS` | none | directories only | `{ dirs: true }` |
 
 Candidate lines are `<value>\t<description>` (description optional). The tag
 line may carry flags after the tag: `NOSPACE` (don't append a space after

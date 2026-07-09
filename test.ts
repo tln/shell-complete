@@ -49,7 +49,6 @@ test('serialize lowers each Reply shape to the wire format', () => {
   // delegated, filtered file completion (payload = filter args)
   assert.strictEqual(s({ ext: ['md', 'docx'] }), 'EXT\nmd\ndocx\n');
   assert.strictEqual(s({ dirs: true }), 'DIRS\n');
-  assert.strictEqual(s({ dirs: true, in: 'themes' }), 'DIRS\nthemes\n');
   // nullish items are skipped
   assert.strictEqual(s(['a', null as unknown as string, 'b']), 'NODEFAULT\na\nb\n');
   // multi-line descriptions are clamped to their first line (the wire

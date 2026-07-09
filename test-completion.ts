@@ -38,7 +38,7 @@ const bare = (a: string[]): string[] => a.map((c) => c.replace(/\/+$/, ''));
 for (const shell of SHELLS) {
   test(`${shell}: first word completes subcommands`, async () => {
     const { candidates } = await getCompletions(shell, 'demo ');
-    assert.deepStrictEqual(sorted(candidates), ['add', 'cd', 'clone', 'edit', 'push', 'theme']);
+    assert.deepStrictEqual(sorted(candidates), ['add', 'cd', 'clone', 'edit', 'push']);
   });
 
   test(`${shell}: completes flags of a subcommand`, async () => {
@@ -156,32 +156,6 @@ for (const shell of SHELLS) {
     assert.ok(got.indexOf('plainfile') === -1, 'files should be excluded; got ' + JSON.stringify(candidates));
   });
 }
-
-// --- DIRS `in`: scope directory completion to a subdirectory ---
-for (const shell of ['bash', 'zsh'] as Shell[]) {
-  test(`${shell}: DIRS scopes to the "in" subdirectory`, async () => {
-    const { candidates } = await getCompletions(shell, 'demo theme ', {
-      dirs: ['themes/dark', 'themes/light', 'decoy'],
-    });
-    const got = bare(candidates);
-    assert.ok(got.indexOf('dark') !== -1, 'want dark; got ' + JSON.stringify(candidates));
-    assert.ok(got.indexOf('light') !== -1, 'want light; got ' + JSON.stringify(candidates));
-    assert.ok(got.indexOf('decoy') === -1, 'decoy is outside themes/; got ' + JSON.stringify(candidates));
-  });
-}
-// The fish stub ignores the DIRS payload — it always completes cwd dirs.
-test.skip(
-  'fish DIRS branch drops the "in" payload (completes cwd dirs instead)',
-  'fish: DIRS scopes to the "in" subdirectory',
-  async () => {
-    const { candidates } = await getCompletions('fish', 'demo theme ', {
-      dirs: ['themes/dark', 'themes/light', 'decoy'],
-    });
-    const got = bare(candidates);
-    assert.ok(got.indexOf('dark') !== -1 && got.indexOf('light') !== -1, JSON.stringify(candidates));
-    assert.ok(got.indexOf('decoy') === -1, JSON.stringify(candidates));
-  }
-);
 
 // --- EXT / DIRS glued behind a `--flag=`: the = wordbreak must be stripped ---
 // bash & zsh strip the `--flag=` prefix before delegating (like the DEFAULT

@@ -14,7 +14,7 @@
 //               when none match (no payload = plain file completion)
 //   NODEFAULT   offer the payload candidates and nothing else
 //   EXT         shell-native file completion filtered to the payload extensions
-//   DIRS        directories only, inside payload[0] if present
+//   DIRS        directories only
 //
 // Candidate order is always preserved (bash needs >= 4.4; older bash shows
 // sorted). Unknown types render nothing, so newer programs degrade safely
@@ -133,8 +133,7 @@ ${fn}() {
         ;;
     DIRS)
         local i
-        while IFS= read -r line; do COMPREPLY+=("$line"); done \\
-            < <(cd "\${payload[0]:-.}" 2>/dev/null && compgen -d -- "$curw")
+        while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -d -- "$curw")
         if ! compopt +o nospace -o filenames 2>/dev/null; then
             for ((i = 0; i < \${#COMPREPLY[@]}; i++)); do
                 COMPREPLY[i]+=/
@@ -205,13 +204,7 @@ ${fn}() {
         ;;
     DIRS)
         compset -P '*[=:]'                        # complete the value after --flag= / host:
-        if [[ -n \${payload[1]:-} ]]; then
-            pushd -q \${payload[1]} 2>/dev/null || return
-            _files -/
-            popd -q
-        else
-            _files -/
-        fi
+        _files -/
         ;;
     esac
 }
