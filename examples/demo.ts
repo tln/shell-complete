@@ -44,7 +44,11 @@ const COMMANDS: Record<string, Command> = {
   },
   add: {
     desc: 'Add file contents',
-    flags: [{ name: '--all', desc: 'Add all files' }],
+    flags: [
+      { name: '--all', desc: 'Add all files' },
+      { name: '--dir=', desc: 'Add from directory', noSpace: true },
+      { name: '--file=', desc: 'Add a specific file', noSpace: true },
+    ],
   },
   // Positional-argument directives: files-by-extension and directories.
   edit: { desc: 'Edit a file', flags: [], reply: { ext: ['txt', 'md'] } },

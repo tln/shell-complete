@@ -45,6 +45,11 @@ for (const shell of SHELLS) {
     const { candidates } = await getCompletions(shell, 'demo push --');
     assert.deepStrictEqual(sorted(candidates), ['--force', '--remote=', '--tags']);
   });
+
+  test(`${shell}: advertises the =-value flags on add`, async () => {
+    const { candidates } = await getCompletions(shell, 'demo add --');
+    assert.deepStrictEqual(sorted(candidates), ['--all', '--dir=', '--file=']);
+  });
 }
 
 // --- candidate order: program order survives (no alphabetical sort) ---
@@ -162,7 +167,7 @@ for (const shell of SHELLS) {
 // branch does); two candidates are seeded so the completion is ambiguous and
 // renders a listing. fish's stub does not strip the prefix yet, so it's skipped.
 const extAfterFlag = async (shell: Shell): Promise<void> => {
-  const { candidates } = await getCompletions(shell, 'demo push --file=', {
+  const { candidates } = await getCompletions(shell, 'demo add --file=', {
     files: ['keep.txt', 'more.txt', 'ignore.log'],
   });
   const got = JSON.stringify(candidates);
@@ -171,7 +176,7 @@ const extAfterFlag = async (shell: Shell): Promise<void> => {
   assert.ok(!candidates.some((c) => c.indexOf('ignore.log') !== -1), 'ignore.log filtered; got ' + got);
 };
 const dirsAfterFlag = async (shell: Shell): Promise<void> => {
-  const { candidates } = await getCompletions(shell, 'demo push --dir=', {
+  const { candidates } = await getCompletions(shell, 'demo add --dir=', {
     dirs: ['themes', 'docs'],
   });
   const got = JSON.stringify(candidates);
