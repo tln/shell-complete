@@ -156,6 +156,37 @@ against newer binaries.
 - `npm run test:completion` — drive real bash/zsh/fish through a PTY and assert on
   what they render (uninstalled shells are skipped).
 
+### Try it live
+
+Drive the bundled demo (`examples/demo.ts`) in a real shell and tab around:
+
+```sh
+npm run build
+sh examples/try.sh bash              # or zsh / fish — shim demo + source the stub
+sh examples/try.sh bash --install    # exercise the install + autoload path instead
+```
+
+Then, in the shell it drops you into:
+
+```
+demo <TAB>              # subcommands: clone push add edit cd
+demo push --<TAB>       # flags: --force --tags --remote=
+demo add --dir=<TAB>    # directories (DIRS behind a --flag=)
+demo edit <TAB>         # *.txt / *.md (EXT)
+```
+
+To try it on another distro without touching your machine, mount the repo into
+a stock image — `dist/` is already built on the host, so the container just
+needs Node and the shell:
+
+```sh
+docker run --rm -it -v "$PWD:/repo" -w /repo ubuntu:24.04 sh -c '
+  apt-get update && apt-get install -y --no-install-recommends nodejs bash-completion &&
+  sh examples/try.sh bash --install'
+```
+
+(Automated cross-distro autoload tests are planned for a later release.)
+
 ## Known gaps
 
 - `--opt=value` and `host:path` work in bash without touching
