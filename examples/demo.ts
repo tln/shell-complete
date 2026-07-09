@@ -26,6 +26,9 @@ interface Flag {
 interface Command {
   desc: string;
   flags: Flag[];
+  // Completion for this command's positional argument (a bare, non-flag word).
+  // Exercises the delegated directives (EXT / DIRS / DEFAULT-with-candidates).
+  reply?: Reply;
 }
 
 // The command model this demo completes against.
@@ -42,6 +45,16 @@ const COMMANDS: Record<string, Command> = {
   add: {
     desc: 'Add file contents',
     flags: [{ name: '--all', desc: 'Add all files' }],
+  },
+  // Positional-argument directives: files-by-extension, dirs, dirs-in-a-subdir,
+  // and a name-or-path arg (candidates plus a file fallback).
+  edit: { desc: 'Edit a file', flags: [], reply: { ext: ['txt', 'md'] } },
+  cd: { desc: 'Change directory', flags: [], reply: { dirs: true } },
+  theme: { desc: 'Pick a theme', flags: [], reply: { dirs: true, in: 'themes' } },
+  switch: {
+    desc: 'Switch branches',
+    flags: [],
+    reply: { items: ['HEAD', 'main'], default: true },
   },
 };
 
@@ -64,9 +77,19 @@ function complete(words: string[], toComplete: string): Reply {
       const vals = ['origin', 'upstream'].filter((v) => v.indexOf(m[1]) === 0);
       return vals.map((v) => '--remote=' + v);
     }
+    // Delegated directives glued behind a `--flag=`: exercises whether the
+    // stub strips the wordbreak prefix before delegating to the shell.
+    if (/^--dir=/.test(toComplete)) return { dirs: true };
+    if (/^--file=/.test(toComplete)) return { ext: ['txt'] };
+    // A `host:path`-style value — exercises the `:` wordbreak.
+    if (/^host:/.test(toComplete)) {
+      return ['host:one', 'host:two'].filter((v) => v.indexOf(toComplete) === 0);
+    }
     if (toComplete.startsWith('-')) {
       return cmd.flags.map((f) => ({ value: f.name, description: f.desc, noSpace: f.noSpace }));
     }
+    // A bare positional word: whatever directive the command declares.
+    if (cmd.reply !== undefined) return cmd.reply;
   }
 
   // Otherwise let the shell complete filenames.
@@ -78,7 +101,15 @@ async function main(): Promise<void> {
 
   // Completion request? We route our own token and hand the already-stripped
   // argv to handle().
-  if (sub === REQUEST) return ac.handle(complete, rest);
+  if (sub === REQUEST) {
+    // Forward-compat probe: emit a directive tag no stub knows, so tests can
+    // assert older stubs degrade to "render nothing" rather than misbehave.
+    if (rest[rest.length - 1] === '__future__') {
+      process.stdout.write('FUTURE\nnope\n');
+      return;
+    }
+    return ac.handle(complete, rest);
+  }
 
   // `completion [shell]` prints a stub to eval; `completion [shell] --install`
   // writes it to the shell's autoload dir instead. The stub re-invokes us with

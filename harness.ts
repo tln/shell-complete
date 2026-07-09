@@ -27,6 +27,7 @@ export interface Completions {
 export interface CompletionOpts {
   timeout?: number;
   files?: string[];
+  dirs?: string[]; // directories to seed in the cwd (created recursively)
 }
 
 // node-pty ships a prebuilt `spawn-helper` that must be executable; some
@@ -186,7 +187,10 @@ export function getCompletions(
 ): Promise<Completions> {
   const timeout = opts.timeout || 10000;
   const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-complete-'));
-  // Optionally seed files in the cwd so file-completion fallback is observable.
+  // Optionally seed dirs/files in the cwd so file-completion is observable.
+  for (const dir of opts.dirs || []) {
+    fs.mkdirSync(path.join(tmpdir, dir), { recursive: true });
+  }
   for (const name of opts.files || []) {
     fs.writeFileSync(path.join(tmpdir, name), '');
   }
